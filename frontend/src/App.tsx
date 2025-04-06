@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, Send, FileText, Loader2 } from 'lucide-react';
+import { Upload, Send, FileText, Loader2, Trash2 } from 'lucide-react';
 
 function App() {
   const [files, setFiles] = useState<File[]>([]);
@@ -8,8 +8,18 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [answer, setAnswer] = useState('');
+  const [chatHistory, setChatHistory] = useState<
+    { question: string; answer: string; time: string }[]
+  >(() => {
+    const saved = localStorage.getItem('chatHistory');
+    return saved ? JSON.parse(saved) : [];
+  });
 
-  const BACKEND_URL = 'http://127.0.0.1:8000'; // Update if backend is deployed elsewhere
+  const BACKEND_URL = 'http://127.0.0.1:8000'; // Update if deployed
+
+  useEffect(() => {
+    localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+  }, [chatHistory]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -67,8 +77,16 @@ function App() {
       const data = await response.json();
 
       if (response.ok) {
+        const newEntry = {
+          question,
+          answer: data.answer,
+          time: new Date().toLocaleString(),
+        };
+        const updatedHistory = [...chatHistory, newEntry];
+
         setAnswer(data.answer);
         setStatus('Answer generated successfully');
+        setChatHistory(updatedHistory);
       } else {
         setStatus(data.error || 'Failed to get answer');
       }
@@ -78,6 +96,11 @@ function App() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleClearHistory = () => {
+    setChatHistory([]);
+    localStorage.removeItem('chatHistory');
   };
 
   return (
@@ -151,6 +174,31 @@ function App() {
           <p className="text-gray-400 whitespace-pre-line">
             {answer ? answer : 'Your AI-generated answer will appear here...'}
           </p>
+        </motion.div>
+
+        {/* Chat History */}
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-8">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="text-lg font-semibold text-accent-teal">Chat History</h3>
+            <button
+              onClick={handleClearHistory}
+              className="text-sm flex items-center text-red-400 hover:text-red-600"
+            >
+              <Trash2 className="w-4 h-4 mr-1" />
+              Clear History
+            </button>
+          </div>
+          <div className="space-y-4 max-h-60 overflow-y-auto">
+            {chatHistory.map((entry, idx) => (
+              <div key={idx} className="bg-black bg-opacity-20 rounded-lg p-3">
+                <div className="flex justify-between items-center mb-1">
+                  <p className="text-sm text-accent-teal font-semibold">Q: {entry.question}</p>
+                  <p className="text-xs text-gray-400">{entry.time}</p>
+                </div>
+                <p className="text-sm text-gray-300">A: {entry.answer}</p>
+              </div>
+            ))}
+          </div>
         </motion.div>
 
         {/* Status Message */}
