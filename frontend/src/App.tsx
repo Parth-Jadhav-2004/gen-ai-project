@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, Send, FileText, Loader2, Trash2 } from 'lucide-react';
+import { Upload, Send, FileText, Loader2, Trash2, List } from 'lucide-react';
 
 function App() {
   const [files, setFiles] = useState<File[]>([]);
@@ -8,14 +8,17 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [answer, setAnswer] = useState('');
+  const [pageNumber, setPageNumber] = useState<number | null>(null);
+  const [summaryPoints, setSummaryPoints] = useState<string[]>([]);
+
   const [chatHistory, setChatHistory] = useState<
-    { question: string; answer: string; time: string }[]
+    { question: string; answer: string; time: string; pageNumber?: number }[]
   >(() => {
     const saved = localStorage.getItem('chatHistory');
     return saved ? JSON.parse(saved) : [];
   });
 
-  const BACKEND_URL = 'http://127.0.0.1:8000'; // Update if deployed
+  const BACKEND_URL = 'http://127.0.0.1:8000';
 
   useEffect(() => {
     localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
@@ -32,6 +35,7 @@ function App() {
   const uploadFiles = async (uploadedFiles: File[]) => {
     setIsLoading(true);
     setStatus('Uploading files...');
+    setSummaryPoints([]);
 
     const formData = new FormData();
     uploadedFiles.forEach((file) => {
@@ -64,13 +68,12 @@ function App() {
     setIsLoading(true);
     setStatus('Processing your question...');
     setAnswer('');
+    setPageNumber(null);
 
     try {
       const response = await fetch(`${BACKEND_URL}/ask-question/`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question }),
       });
 
@@ -81,12 +84,12 @@ function App() {
           question,
           answer: data.answer,
           time: new Date().toLocaleString(),
+          pageNumber: data.page_number,
         };
-        const updatedHistory = [...chatHistory, newEntry];
-
+        setChatHistory([...chatHistory, newEntry]);
         setAnswer(data.answer);
+        setPageNumber(data.page_number);
         setStatus('Answer generated successfully');
-        setChatHistory(updatedHistory);
       } else {
         setStatus(data.error || 'Failed to get answer');
       }
@@ -103,21 +106,68 @@ function App() {
     localStorage.removeItem('chatHistory');
   };
 
-  return (
-    <div className="min-h-screen bg-primary text-white p-4 md:p-8">
-      <div className="max-w-4xl mx-auto">
-        <motion.h1
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-4xl font-bold mb-8 text-center text-accent-teal"
-        >
-          Document Q&A Assistant
-        </motion.h1>
+  const handleSummarize = async () => {
+    setIsLoading(true);
+    setStatus('Summarizing document...');
+    setSummaryPoints([]);
 
-        {/* Upload Section */}
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-8">
-          <div className="border-2 border-dashed border-accent-gray rounded-lg p-8 text-center">
-            <Upload className="w-12 h-12 mx-auto mb-4 text-accent-teal" />
+    try {
+      const response = await fetch(`${BACKEND_URL}/summarize/`);
+      const data = await response.json();
+
+      if (response.ok && Array.isArray(data.summary)) {
+        setSummaryPoints(data.summary);
+        setStatus('Summary generated');
+      } else {
+        setStatus(data.error || 'Failed to summarize document');
+      }
+    } catch (err) {
+      console.error('Error summarizing:', err);
+      setStatus('An error occurred while summarizing');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-white text-black p-4 md:p-6">
+      <div className="flex flex-col md:flex-row gap-6 max-w-7xl mx-auto">
+        {/* LEFT PANEL: Chat History */}
+        <div className="w-full md:w-1/4 bg-[#E0F7FA] p-4 rounded-lg shadow">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-lg font-semibold">Chat History</h3>
+            <button
+              onClick={handleClearHistory}
+              className="text-sm flex items-center text-red-500 hover:text-red-700"
+            >
+              <Trash2 className="w-4 h-4 mr-1" />
+              Clear
+            </button>
+          </div>
+          <div className="space-y-3 max-h-[75vh] overflow-y-auto">
+            {chatHistory.map((entry, idx) => (
+              <div key={idx} className="bg-white border p-3 rounded shadow-sm">
+                <p className="text-sm font-semibold">Q: {entry.question}</p>
+                <p className="text-sm">A: {entry.answer}</p>
+                <p className="text-xs text-gray-500">{entry.time}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CENTER PANEL: Upload + QnA */}
+        <div className="w-full md:w-2/4 flex flex-col gap-6">
+          <motion.h1
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-3xl font-bold text-center"
+          >
+            Document Q&A Assistant
+          </motion.h1>
+
+          {/* Upload Section */}
+          <div className="border-2 border-dashed border-gray-400 rounded-lg p-6 text-center bg-[#E0F7FA]">
+            <Upload className="w-8 h-8 mx-auto mb-3 text-black" />
             <label className="cursor-pointer">
               <input
                 type="file"
@@ -126,88 +176,111 @@ function App() {
                 onChange={handleFileUpload}
                 className="hidden"
               />
-              <span className="bg-accent-teal text-black px-6 py-2 rounded-full hover:bg-opacity-80 transition-colors">
+              <span className="bg-[#4CAF50] text-white px-4 py-2 rounded-full hover:bg-green-600 transition-colors">
                 Upload Documents
               </span>
             </label>
-            <p className="mt-2 text-sm text-gray-400">
-              Supports PDF, TXT, and DOCX files
+            <p className="mt-2 text-sm text-gray-600">
+              Supports PDF, TXT, and DOCX
             </p>
           </div>
 
           {files.length > 0 && (
-            <div className="mt-4 max-h-40 overflow-y-auto bg-accent-gray bg-opacity-20 rounded-lg p-4">
+            <div className="bg-[#E0F7FA] rounded p-4 max-h-32 overflow-y-auto">
               {files.map((file, index) => (
-                <div key={index} className="flex items-center gap-2 mb-2">
-                  <FileText className="w-4 h-4 text-accent-teal" />
+                <div key={index} className="flex items-center gap-2 text-sm">
+                  <FileText className="w-4 h-4" />
                   <span>{file.name}</span>
                 </div>
               ))}
             </div>
           )}
-        </motion.div>
 
-        {/* Question Section */}
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-8">
+          {/* Question Area */}
           <div className="flex gap-2">
             <input
               type="text"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder="Ask a question about your documents..."
-              className="flex-1 bg-accent-gray bg-opacity-20 border border-accent-gray rounded-lg px-4 py-2 focus:outline-none focus:border-accent-teal"
+              placeholder="Ask a question..."
+              className="flex-1 border border-gray-400 rounded px-4 py-2 focus:outline-none"
             />
             <button
               onClick={handleAskQuestion}
               disabled={isLoading}
-              className="bg-accent-teal text-black px-6 py-2 rounded-lg hover:bg-opacity-80 transition-colors flex items-center gap-2"
+              className="bg-[#4CAF50] text-white px-4 py-2 rounded hover:bg-green-600 flex items-center gap-2"
             >
-              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
               Ask
             </button>
           </div>
-        </motion.div>
 
-        {/* Answer Display */}
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-accent-gray bg-opacity-20 rounded-lg p-6 mb-4">
-          <h2 className="text-xl font-semibold mb-4 text-accent-teal">Answer</h2>
-          <p className="text-gray-400 whitespace-pre-line">
-            {answer ? answer : 'Your AI-generated answer will appear here...'}
-          </p>
-        </motion.div>
-
-        {/* Chat History */}
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-8">
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="text-lg font-semibold text-accent-teal">Chat History</h3>
-            <button
-              onClick={handleClearHistory}
-              className="text-sm flex items-center text-red-400 hover:text-red-600"
-            >
-              <Trash2 className="w-4 h-4 mr-1" />
-              Clear History
-            </button>
+          {/* Answer Display */}
+          <div className="border rounded p-4 bg-[#E0F7FA]">
+            <h2 className="text-lg font-semibold mb-2">Answer</h2>
+            <p className="text-sm whitespace-pre-line">
+              {answer ? answer : 'Your AI-generated answer will appear here...'}
+            </p>
+            {pageNumber !== null && (
+              <p className="text-sm mt-2 text-gray-600">
+                📄 Found on page: <strong>{pageNumber}</strong>
+              </p>
+            )}
           </div>
-          <div className="space-y-4 max-h-60 overflow-y-auto">
-            {chatHistory.map((entry, idx) => (
-              <div key={idx} className="bg-black bg-opacity-20 rounded-lg p-3">
-                <div className="flex justify-between items-center mb-1">
-                  <p className="text-sm text-accent-teal font-semibold">Q: {entry.question}</p>
-                  <p className="text-xs text-gray-400">{entry.time}</p>
-                </div>
-                <p className="text-sm text-gray-300">A: {entry.answer}</p>
-              </div>
-            ))}
-          </div>
-        </motion.div>
 
-        {/* Status Message */}
-        {status && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center text-sm text-accent-teal">
-            {isLoading && <Loader2 className="w-4 h-4 animate-spin inline mr-2" />}
-            {status}
-          </motion.div>
-        )}
+          {/* Status Message */}
+          {status && (
+            <div className="text-center text-sm text-gray-600">
+              {isLoading && <Loader2 className="w-4 h-4 animate-spin inline mr-2" />}
+              {status}
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT PANEL: Summary with Staggered Reveal */}
+        <div className="w-full md:w-1/4 bg-[#E0F7FA] p-4 rounded-lg shadow flex flex-col">
+          <button
+            onClick={handleSummarize}
+            disabled={isLoading}
+            className="bg-[#4CAF50] text-white py-2 px-4 rounded hover:bg-green-600 flex items-center justify-center gap-2 mb-2"
+          >
+            <List className="w-4 h-4" />
+            Summarize
+          </button>
+
+          <div className="overflow-y-auto max-h-[100vh]">
+            {summaryPoints.length > 0 && (
+              <motion.ul
+                initial="hidden"
+                animate="visible"
+                variants={{
+                  visible: {
+                    transition: {
+                      staggerChildren: 0.2,
+                    },
+                  },
+                }}
+                className="list-disc pl-5 space-y-1 text-sm"
+              >
+                {summaryPoints.map((point, index) => (
+                  <motion.li
+                    key={index}
+                    variants={{
+                      hidden: { opacity: 0, y: 10 },
+                      visible: { opacity: 1, y: 0 },
+                    }}
+                  >
+                    {point}
+                  </motion.li>
+                ))}
+              </motion.ul>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

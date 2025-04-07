@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from rag import process_documents, answer_question
+from rag import process_documents, answer_question, summarize_chunks
 
 app = Flask(__name__)
 CORS(app)
@@ -37,10 +37,27 @@ def ask_question():
         return jsonify({"error": "Please upload documents first"}), 400
 
     try:
-        answer = answer_question(index, chunks, question)
-        return jsonify({"answer": answer}), 200
+        result = answer_question(index, chunks, question)
+        return jsonify(result), 200  # includes answer and page_number
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route("/summarize/", methods=["GET"])
+def summarize():
+    global chunks
+    print("Chunks in memory:", len(chunks))
+    
+    if not chunks:
+        return jsonify({"error": "No documents uploaded"}), 400
+
+    try:
+        summary = summarize_chunks(chunks)
+        print("Summary generated:", summary)
+        return jsonify({"summary": summary}), 200
+    except Exception as e:
+        print("Error during summarization:", str(e))
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000, debug=True)
